@@ -21,4 +21,4 @@ La ruta para ver el swagger es http://${process.env.HOST}:${process.env.PORT}/ap
 # JWT
 La clave se está guardando en los headers en Authorization si tienes problema con esto puede comentar la línea 10 de routes/pgRouter
 # Final
-Disfruta de la aplicación
+Disfruta de la aplicación.
