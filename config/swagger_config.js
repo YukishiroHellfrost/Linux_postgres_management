@@ -15,13 +15,19 @@ const options = {
       },
     ],
     components: {
+      //Esquema de seguridad para JWT
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
       schemas: {
         Pg: {
           type: 'object',
           properties: {
             name: { type: 'string', example: 'solutel' },
-          
-
           },
           required: ['name'],
         },
@@ -35,6 +41,8 @@ const options = {
         },
       },
     },
+    // Opcional: seguridad global (si todas las rutas requieren token)
+    // security: [{ bearerAuth: [] }],
   },
   apis: ['./routes/*.js'], // Archivos donde buscar comentarios JSDoc
 };
