@@ -3,7 +3,6 @@ const { badRequest } = require('../utils/errors');
 /**
  * Middleware para validar el nombre de la base de datos en req.params.name
  * - Verifica que exista
- * - Solo caracteres alfanuméricos y guión bajo
  * - Longitud máxima 63 (límite de PostgreSQL)
  */
 const validateDbName = (req, res, next) => {
@@ -13,11 +12,6 @@ const validateDbName = (req, res, next) => {
     return next(badRequest('El nombre de la base de datos es requerido'));
   }
 
-  // Caracteres permitidos: letras, números, guión bajo
-  const validNameRegex = /^[a-zA-Z0-9_]+$/;
-  if (!validNameRegex.test(name)) {
-    return next(badRequest('El nombre de la base de datos solo puede contener letras, números y guiones bajos'));
-  }
 
   // Límite de PostgreSQL para identificadores
   if (name.length > 63) {

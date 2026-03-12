@@ -78,5 +78,43 @@ router.get('/:name', validateDbName, pgController.meackBackup);
  *         description: Datos inválidos
  */
 router.post('/restore/:name', validateDbName, validateBackupFile, pgController.restoreBackup);
-
+/**
+ * @swagger
+ * /api/pg/download/{name}:
+ *   get:
+ *     summary: Descarga un archivo de backup de la base de datos especificada
+ *     tags: [PostgreSQL]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Nombre de la base de datos
+ *       - in: query
+ *         name: file
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Nombre exacto del archivo (opcional, si no se envía se descarga el más reciente)
+ *     responses:
+ *       200:
+ *         description: Archivo descargado
+ *         content:
+ *           application/sql:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       400:
+ *         description: Solicitud incorrecta
+ *       401:
+ *         description: No autorizado
+ *       404:
+ *         description: No se encontró el backup
+ *       500:
+ *         description: Error interno
+ */
+router.get('/download/:name', pgController.downloadBackup);
 module.exports = router;

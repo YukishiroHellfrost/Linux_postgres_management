@@ -31,7 +31,7 @@ class PgController {
     }
   }
 
-  async meackBackup(req = request, res = response, next) {
+async meackBackup(req = request, res = response, next) {
     const { name } = req.params;
   
     if (!name) {
@@ -149,58 +149,58 @@ class PgController {
         writeStream.write(`CREATE TABLE IF NOT EXISTS "public"."${table}" (\n${columnDefs}\n);\n\n`);
   
         // ========== 4. DATOS DE LA TABLA ==========
-const dataRes = await client.query(`SELECT * FROM "public"."${table}"`);
-if (dataRes.rows.length > 0) {
-  writeStream.write(`-- Datos para "public"."${table}"\n`);
-  // Eliminar registros existentes para evitar duplicados
-  writeStream.write(`DELETE FROM "public"."${table}";\n`);
-  for (const row of dataRes.rows) {
-    const columns = Object.keys(row).map(c => `"${c}"`).join(', ');
-    const values = Object.values(row).map(v => escapeSqlValue(v)).join(', ');
-    writeStream.write(`INSERT INTO "public"."${table}" (${columns}) VALUES (${values});\n`);
-  }
-  writeStream.write('\n');
-}
-        // ========== 5. ACTUALIZAR SECUENCIA SI ES SERIAL ==========
-        const serialCol = columnsRes.rows.find(col => 
-          col.column_default && col.column_default.includes('nextval')
-        );
-        if (serialCol) {
-          const colName = serialCol.column_name;
-          const maxIdRes = await client.query(`SELECT MAX("${colName}") FROM "public"."${table}"`);
-          const maxId = maxIdRes.rows[0].max;
-          if (maxId) {
-            // Intentar adivinar el nombre de la secuencia (convención)
-            const seqName = `${table}_${colName}_seq`;
-            writeStream.write(`SELECT setval('"public"."${seqName}"', ${maxId}, true);\n`);
-          }
-        }
+    const dataRes = await client.query(`SELECT * FROM "public"."${table}"`);
+    if (dataRes.rows.length > 0) {
+      writeStream.write(`-- Datos para "public"."${table}"\n`);
+      // Eliminar registros existentes para evitar duplicados
+      writeStream.write(`DELETE FROM "public"."${table}";\n`);
+      for (const row of dataRes.rows) {
+        const columns = Object.keys(row).map(c => `"${c}"`).join(', ');
+        const values = Object.values(row).map(v => escapeSqlValue(v)).join(', ');
+        writeStream.write(`INSERT INTO "public"."${table}" (${columns}) VALUES (${values});\n`);
       }
-  
-      writeStream.write(`COMMIT;\n`);
-      writeStream.end();
-  
-      await new Promise((resolve, reject) => {
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-      });
-  
-      client.release();
-      await backupPool.end();
-  
-      res.json({
-        success: true,
-        message: 'Backup nativo creado exitosamente (con soporte para mayúsculas)',
-        file: backupFile
-      });
-  
-    } catch (error) {
-      client.release();
-      await backupPool.end();
-      console.error('Error en backup nativo:', error);
-      next(internalServer(`Error al crear backup: ${error.message}`));
+      writeStream.write('\n');
     }
-  }
+            // ========== 5. ACTUALIZAR SECUENCIA SI ES SERIAL ==========
+            const serialCol = columnsRes.rows.find(col => 
+              col.column_default && col.column_default.includes('nextval')
+            );
+            if (serialCol) {
+              const colName = serialCol.column_name;
+              const maxIdRes = await client.query(`SELECT MAX("${colName}") FROM "public"."${table}"`);
+              const maxId = maxIdRes.rows[0].max;
+              if (maxId) {
+                // Intentar adivinar el nombre de la secuencia (convención)
+                const seqName = `${table}_${colName}_seq`;
+                writeStream.write(`SELECT setval('"public"."${seqName}"', ${maxId}, true);\n`);
+              }
+            }
+          }
+      
+          writeStream.write(`COMMIT;\n`);
+          writeStream.end();
+      
+          await new Promise((resolve, reject) => {
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+          });
+      
+          client.release();
+          await backupPool.end();
+      
+          res.json({
+            success: true,
+            message: 'Backup nativo creado exitosamente (con soporte para mayúsculas)',
+            file: backupFile
+          });
+      
+        } catch (error) {
+          client.release();
+          await backupPool.end();
+          console.error('Error en backup nativo:', error);
+          next(internalServer(`Error al crear backup: ${error.message}`));
+        }
+}
   async restoreBackup(req = request, res = response, next) {
     const { name } = req.params; // nombre de la BD destino
     let { backupFile } = req.body; // opcional
@@ -280,6 +280,62 @@ if (dataRes.rows.length > 0) {
       await restorePool.end();
     }
   }
+  async downloadBackup(req = request, res = response, next) {
+  const { name } = req.params;
+  const { file } = req.query; // opcional: nombre exacto del archivo
+
+  if (!name) {
+    return next(badRequest('El nombre de la base de datos es requerido'));
+  }
+
+  try {
+    // Leer el directorio de backups
+    const files = await fs.readdir(BACKUP_DIR);
+    
+    // Filtrar archivos que correspondan a la base de datos (empiecen con name_ y terminen .sql)
+    const backups = files
+      .filter(f => f.startsWith(`${name}_`) && f.endsWith('.sql'))
+      .map(f => ({
+        name: f,
+        path: path.join(BACKUP_DIR, f),
+        // Extraer timestamp del nombre (después de name_ y antes de .sql)
+        timestamp: f.slice(name.length + 1, -4)
+      }))
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp)); // más reciente primero
+
+    if (backups.length === 0) {
+      return next(notFound(`No hay backups disponibles para la base de datos '${name}'`));
+    }
+
+    let selectedFile;
+    if (file) {
+      // Si se especificó un nombre de archivo, buscar coincidencia exacta
+      const exact = backups.find(b => b.name === file);
+      if (!exact) {
+        return next(notFound(`El archivo '${file}' no existe para la base de datos '${name}'`));
+      }
+      selectedFile = exact;
+    } else {
+      // Si no, tomar el más reciente
+      selectedFile = backups[0];
+    }
+
+    // Verificar que el archivo existe (por si acaso)
+    await fs.access(selectedFile.path, fs.constants.R_OK);
+
+    // Enviar el archivo para descarga
+    res.download(selectedFile.path, selectedFile.name, (err) => {
+      if (err) {
+        console.error('Error al descargar:', err);
+        // No podemos enviar otra respuesta porque ya se inició la descarga, pero podemos registrar
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en downloadBackup:', error);
+    next(internalServer(`Error al descargar backup: ${error.message}`));
+  }
+}
 }
 
 module.exports = PgController;
